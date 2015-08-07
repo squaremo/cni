@@ -11,6 +11,9 @@ fi
 export GOBIN=${PWD}/bin
 export GOPATH=${PWD}/gopath:$(pwd)/Godeps/_workspace
 
+echo "Building reference CLI"
+go build -o bin/cni ./cmd
+
 echo "Building plugins"
 
 PLUGINS="plugins/meta/* plugins/main/* plugins/ipam/*"
