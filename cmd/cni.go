@@ -1,12 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/appc/cni"
+	"github.com/appc/cni/pkg/plugin"
 )
 
 const (
@@ -19,6 +22,20 @@ const (
 	CmdDel = "del"
 )
 
+func loadNetConf(dir, name string) (*plugin.NetConf, error) {
+	filename := fmt.Sprintf("%s.conf", name)
+	file := filepath.Join(dir, filename)
+	bytes, err := ioutil.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	var conf plugin.NetConf
+	if err = json.Unmarshal(bytes, &conf); err != nil {
+		return nil, err
+	}
+	return &conf, nil
+}
+
 func main() {
 	if len(os.Args) < 3 {
 		usage()
@@ -29,12 +46,12 @@ func main() {
 	if netdir == "" {
 		netdir = DefaultNetDir
 	}
-	netconf, err := cni.LoadNetConf(netdir, os.Args[1])
+	netconf, err := loadNetConf(netdir, os.Args[2])
 	if err != nil {
 		exit(err)
 	}
 
-	netns := os.Args[2]
+	netns := os.Args[3]
 
 	cninet := cni.FromConfig(&cni.CNIConfig{
 		Path: strings.Split(os.Getenv(EnvCNIPath), ":"),
@@ -44,7 +61,7 @@ func main() {
 		ContainerID: "cni",
 		NetNS:       netns,
 		IfName:      "eth0",
-		Args:        []string{},
+		Args:        "",
 	}
 
 	switch os.Args[1] {
@@ -67,7 +84,7 @@ func usage() {
 
 func exit(err error) {
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s", err)
+		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}
 	os.Exit(0)
