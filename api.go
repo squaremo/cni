@@ -28,10 +28,6 @@ type CNIConfig struct {
 	Path []string
 }
 
-func FromConfig(conf *CNIConfig) CNI {
-	return conf
-}
-
 func (c *CNIConfig) AddNetwork(net *plugin.NetConf, rt *RuntimeConf) (*plugin.Result, error) {
 	retBytes, err := c.execPlugin("ADD", net, rt)
 	if err != nil {
@@ -50,6 +46,8 @@ func (c *CNIConfig) DelNetwork(net *plugin.NetConf, rt *RuntimeConf) error {
 
 // =====
 
+// taken from rkt/networking/podenv.go
+// also note similar code in cni/pkg/plugin/ipam.go
 func (c *CNIConfig) findPlugin(plugin string) string {
 	for _, p := range c.Path {
 		fullname := filepath.Join(p, plugin)
@@ -61,10 +59,11 @@ func (c *CNIConfig) findPlugin(plugin string) string {
 	return ""
 }
 
+// taken from rkt/networking/net_plugin.go
 func (c *CNIConfig) execPlugin(action string, conf *plugin.NetConf, rt *RuntimeConf) ([]byte, error) {
 	pluginPath := c.findPlugin(conf.Type)
 	if pluginPath == "" {
-		return nil, fmt.Errorf("Could not find plugin %q in %v", conf.Type, c.Path)
+		return nil, fmt.Errorf("could not find plugin %q in %v", conf.Type, c.Path)
 	}
 
 	vars := [][2]string{
@@ -96,6 +95,7 @@ func (c *CNIConfig) execPlugin(action string, conf *plugin.NetConf, rt *RuntimeC
 	return stdout.Bytes(), err
 }
 
+// taken from rkt/networking/net_plugin.go
 func envVars(vars [][2]string) []string {
 	env := os.Environ()
 

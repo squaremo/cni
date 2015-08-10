@@ -89,9 +89,9 @@ func main() {
 
 	netns := os.Args[3]
 
-	cninet := cni.FromConfig(&cni.CNIConfig{
+	cninet := &cni.CNIConfig{
 		Path: strings.Split(os.Getenv(EnvCNIPath), ":"),
-	})
+	}
 
 	rt := &cni.RuntimeConf{
 		ContainerID: "cni",
