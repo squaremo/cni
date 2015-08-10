@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/appc/cni"
@@ -22,18 +23,53 @@ const (
 	CmdDel = "del"
 )
 
+func listConfFiles(dir string) ([]string, error) {
+	// In part, from rkt/networking/podenv.go#listFiles
+	files, err := ioutil.ReadDir(dir)
+	switch {
+	case err == nil: // break
+	case os.IsNotExist(err):
+		return nil, nil
+	default:
+		return nil, err
+	}
+
+	confFiles := []string{}
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+		if filepath.Ext(f.Name()) == ".conf" {
+			confFiles = append(confFiles, filepath.Join(dir, f.Name()))
+		}
+	}
+	return confFiles, nil
+}
+
 func loadNetConf(dir, name string) (*plugin.NetConf, error) {
-	filename := fmt.Sprintf("%s.conf", name)
-	file := filepath.Join(dir, filename)
-	bytes, err := ioutil.ReadFile(file)
-	if err != nil {
+	files, err := listConfFiles(dir)
+	switch {
+	case err != nil:
 		return nil, err
+	case files == nil || len(files) == 0:
+		return nil, fmt.Errorf("No net configurations found")
 	}
-	var conf plugin.NetConf
-	if err = json.Unmarshal(bytes, &conf); err != nil {
-		return nil, err
+	sort.Strings(files)
+
+	for _, confFile := range files {
+		bytes, err := ioutil.ReadFile(confFile)
+		if err != nil {
+			return nil, fmt.Errorf("error reading %s: %s", confFile, err)
+		}
+		var conf plugin.NetConf
+		if err = json.Unmarshal(bytes, &conf); err != nil {
+			return nil, fmt.Errorf("error parsing %s: %s", confFile, err)
+		}
+		if conf.Name == name {
+			return &conf, nil
+		}
 	}
-	return &conf, nil
+	return nil, fmt.Errorf(`no net configuration with name "%s" in %s`, name, dir)
 }
 
 func main() {
