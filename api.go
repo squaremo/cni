@@ -47,19 +47,12 @@ type CNIConfig struct {
 }
 
 func (c *CNIConfig) AddNetwork(net *NetworkConfig, rt *RuntimeConf) (*plugin.Result, error) {
-	retBytes, err := c.execPlugin("ADD", net, rt)
-	if err != nil {
-		return nil, err
-	}
-	var res plugin.Result
-	if err = json.Unmarshal(retBytes, &res); err != nil {
-		return nil, err
-	}
-	return &res, nil
+	return c.execPlugin("ADD", net, rt)
 }
 
 func (c *CNIConfig) DelNetwork(net *NetworkConfig, rt *RuntimeConf) error {
-	return nil
+	_, err := c.execPlugin("DEL", net, rt)
+	return err
 }
 
 // =====
@@ -81,7 +74,7 @@ func (c *CNIConfig) findPlugin(plugin string) string {
 
 // there's another in cni/pkg/plugin/ipam.go, but it assumes the
 // environment variables are inherited from the current process
-func (c *CNIConfig) execPlugin(action string, conf *NetworkConfig, rt *RuntimeConf) ([]byte, error) {
+func (c *CNIConfig) execPlugin(action string, conf *NetworkConfig, rt *RuntimeConf) (*plugin.Result, error) {
 	pluginPath := c.findPlugin(conf.Type)
 	if pluginPath == "" {
 		return nil, fmt.Errorf("could not find plugin %q in %v", conf.Type, c.Path)
@@ -108,8 +101,30 @@ func (c *CNIConfig) execPlugin(action string, conf *NetworkConfig, rt *RuntimeCo
 		Stderr: os.Stderr,
 	}
 
-	err := cmd.Run()
-	return stdout.Bytes(), err
+	if err := cmd.Run(); err != nil {
+		return nil, pluginErr(err, stdout.Bytes())
+	}
+
+	res := &plugin.Result{}
+	err := json.Unmarshal(stdout.Bytes(), res)
+	return res, err
+}
+
+// taken from cni/pkg/plugin/ipam.go
+func pluginErr(err error, output []byte) error {
+	if _, ok := err.(*exec.ExitError); ok {
+		emsg := plugin.Error{}
+		if perr := json.Unmarshal(output, &emsg); perr != nil {
+			return fmt.Errorf("netplugin failed but error parsing its diagnostic message %q: %v", string(output), perr)
+		}
+		details := ""
+		if emsg.Details != "" {
+			details = fmt.Sprintf("; %v", emsg.Details)
+		}
+		return fmt.Errorf("%v%v", emsg.Msg, details)
+	}
+
+	return err
 }
 
 // taken from rkt/networking/net_plugin.go
