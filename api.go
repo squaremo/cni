@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,16 +20,33 @@ type RuntimeConf struct {
 	Args        string
 }
 
+type NetworkConfig struct {
+	plugin.NetConf
+	Bytes []byte
+}
+
+func ConfFromFile(filename string) (*NetworkConfig, error) {
+	bytes, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("error reading %s: %s", filename, err)
+	}
+	conf := &NetworkConfig{Bytes: bytes}
+	if err = json.Unmarshal(bytes, conf); err != nil {
+		return nil, fmt.Errorf("error parsing %s: %s", filename, err)
+	}
+	return conf, nil
+}
+
 type CNI interface {
-	AddNetwork(net *plugin.NetConf, rt *RuntimeConf) (*plugin.Result, error)
-	DelNetwork(net *plugin.NetConf, rt *RuntimeConf) error
+	AddNetwork(net *NetworkConfig, rt *RuntimeConf) (*plugin.Result, error)
+	DelNetwork(net *NetworkConfig, rt *RuntimeConf) error
 }
 
 type CNIConfig struct {
 	Path []string
 }
 
-func (c *CNIConfig) AddNetwork(net *plugin.NetConf, rt *RuntimeConf) (*plugin.Result, error) {
+func (c *CNIConfig) AddNetwork(net *NetworkConfig, rt *RuntimeConf) (*plugin.Result, error) {
 	retBytes, err := c.execPlugin("ADD", net, rt)
 	if err != nil {
 		return nil, err
@@ -40,7 +58,7 @@ func (c *CNIConfig) AddNetwork(net *plugin.NetConf, rt *RuntimeConf) (*plugin.Re
 	return &res, nil
 }
 
-func (c *CNIConfig) DelNetwork(net *plugin.NetConf, rt *RuntimeConf) error {
+func (c *CNIConfig) DelNetwork(net *NetworkConfig, rt *RuntimeConf) error {
 	return nil
 }
 
@@ -60,7 +78,10 @@ func (c *CNIConfig) findPlugin(plugin string) string {
 }
 
 // taken from rkt/networking/net_plugin.go
-func (c *CNIConfig) execPlugin(action string, conf *plugin.NetConf, rt *RuntimeConf) ([]byte, error) {
+
+// there's another in cni/pkg/plugin/ipam.go, but it assumes the
+// environment variables are inherited from the current process
+func (c *CNIConfig) execPlugin(action string, conf *NetworkConfig, rt *RuntimeConf) ([]byte, error) {
 	pluginPath := c.findPlugin(conf.Type)
 	if pluginPath == "" {
 		return nil, fmt.Errorf("could not find plugin %q in %v", conf.Type, c.Path)
@@ -75,11 +96,7 @@ func (c *CNIConfig) execPlugin(action string, conf *plugin.NetConf, rt *RuntimeC
 		{"CNI_PATH", strings.Join(c.Path, ":")},
 	}
 
-	confBytes, err := json.Marshal(conf)
-	if err != nil {
-		return nil, err
-	}
-	stdin := bytes.NewBuffer(confBytes)
+	stdin := bytes.NewBuffer(conf.Bytes)
 	stdout := &bytes.Buffer{}
 
 	cmd := exec.Cmd{
@@ -91,7 +108,7 @@ func (c *CNIConfig) execPlugin(action string, conf *plugin.NetConf, rt *RuntimeC
 		Stderr: os.Stderr,
 	}
 
-	err = cmd.Run()
+	err := cmd.Run()
 	return stdout.Bytes(), err
 }
 

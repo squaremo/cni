@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -10,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/appc/cni"
-	"github.com/appc/cni/pkg/plugin"
 )
 
 const (
@@ -46,7 +44,7 @@ func listConfFiles(dir string) ([]string, error) {
 	return confFiles, nil
 }
 
-func loadNetConf(dir, name string) (*plugin.NetConf, error) {
+func loadNetConf(dir, name string) (*cni.NetworkConfig, error) {
 	files, err := listConfFiles(dir)
 	switch {
 	case err != nil:
@@ -57,16 +55,12 @@ func loadNetConf(dir, name string) (*plugin.NetConf, error) {
 	sort.Strings(files)
 
 	for _, confFile := range files {
-		bytes, err := ioutil.ReadFile(confFile)
+		conf, err := cni.ConfFromFile(confFile)
 		if err != nil {
-			return nil, fmt.Errorf("error reading %s: %s", confFile, err)
-		}
-		var conf plugin.NetConf
-		if err = json.Unmarshal(bytes, &conf); err != nil {
-			return nil, fmt.Errorf("error parsing %s: %s", confFile, err)
+			return nil, err
 		}
 		if conf.Name == name {
-			return &conf, nil
+			return conf, nil
 		}
 	}
 	return nil, fmt.Errorf(`no net configuration with name "%s" in %s`, name, dir)
