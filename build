@@ -15,7 +15,7 @@ echo "Building API"
 go build ${REPO_PATH}
 
 echo "Building reference CLI"
-go install ${REPO_PATH}/cmd
+go install ${REPO_PATH}/cnitool
 
 echo "Building plugins"
 
