@@ -7,24 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/appc/cni/pkg/types"
 )
-
-// Find returns the full path of the plugin by searching in CNI_PATH
-func Find(plugin string) string {
-	paths := strings.Split(os.Getenv("CNI_PATH"), ":")
-
-	for _, p := range paths {
-		fullname := filepath.Join(p, plugin)
-		if fi, err := os.Stat(fullname); err == nil && fi.Mode().IsRegular() {
-			return fullname
-		}
-	}
-
-	return ""
-}
 
 func pluginErr(err error, output []byte) error {
 	if _, ok := err.(*exec.ExitError); ok {

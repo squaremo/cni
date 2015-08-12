@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/appc/cni/pkg/invoke"
@@ -56,25 +55,10 @@ func (c *CNIConfig) DelNetwork(net *NetworkConfig, rt *RuntimeConf) error {
 
 // =====
 
-// taken from rkt/networking/podenv.go
-// also note similar code in cni/pkg/plugin/ipam.go
-func (c *CNIConfig) findPlugin(plugin string) string {
-	for _, p := range c.Path {
-		fullname := filepath.Join(p, plugin)
-		if fi, err := os.Stat(fullname); err == nil && fi.Mode().IsRegular() {
-			return fullname
-		}
-	}
-
-	return ""
-}
-
-// taken from rkt/networking/net_plugin.go
-
 // there's another in cni/pkg/plugin/ipam.go, but it assumes the
 // environment variables are inherited from the current process
 func (c *CNIConfig) execPlugin(action string, conf *NetworkConfig, rt *RuntimeConf) (*types.Result, error) {
-	pluginPath := c.findPlugin(conf.Type)
+	pluginPath := invoke.FindInPath(conf.Type, c.Path)
 
 	vars := [][2]string{
 		{"CNI_COMMAND", action},
