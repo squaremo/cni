@@ -1,16 +1,15 @@
 package cni
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"github.com/appc/cni/pkg/plugin"
+	"github.com/appc/cni/pkg/invoke"
+	"github.com/appc/cni/pkg/types"
 )
 
 type RuntimeConf struct {
@@ -21,7 +20,7 @@ type RuntimeConf struct {
 }
 
 type NetworkConfig struct {
-	plugin.NetConf
+	types.NetConf
 	Bytes []byte
 }
 
@@ -38,7 +37,7 @@ func ConfFromFile(filename string) (*NetworkConfig, error) {
 }
 
 type CNI interface {
-	AddNetwork(net *NetworkConfig, rt *RuntimeConf) (*plugin.Result, error)
+	AddNetwork(net *NetworkConfig, rt *RuntimeConf) (*types.Result, error)
 	DelNetwork(net *NetworkConfig, rt *RuntimeConf) error
 }
 
@@ -46,7 +45,7 @@ type CNIConfig struct {
 	Path []string
 }
 
-func (c *CNIConfig) AddNetwork(net *NetworkConfig, rt *RuntimeConf) (*plugin.Result, error) {
+func (c *CNIConfig) AddNetwork(net *NetworkConfig, rt *RuntimeConf) (*types.Result, error) {
 	return c.execPlugin("ADD", net, rt)
 }
 
@@ -74,11 +73,8 @@ func (c *CNIConfig) findPlugin(plugin string) string {
 
 // there's another in cni/pkg/plugin/ipam.go, but it assumes the
 // environment variables are inherited from the current process
-func (c *CNIConfig) execPlugin(action string, conf *NetworkConfig, rt *RuntimeConf) (*plugin.Result, error) {
+func (c *CNIConfig) execPlugin(action string, conf *NetworkConfig, rt *RuntimeConf) (*types.Result, error) {
 	pluginPath := c.findPlugin(conf.Type)
-	if pluginPath == "" {
-		return nil, fmt.Errorf("could not find plugin %q in %v", conf.Type, c.Path)
-	}
 
 	vars := [][2]string{
 		{"CNI_COMMAND", action},
@@ -88,43 +84,7 @@ func (c *CNIConfig) execPlugin(action string, conf *NetworkConfig, rt *RuntimeCo
 		{"CNI_IFNAME", rt.IfName},
 		{"CNI_PATH", strings.Join(c.Path, ":")},
 	}
-
-	stdin := bytes.NewBuffer(conf.Bytes)
-	stdout := &bytes.Buffer{}
-
-	cmd := exec.Cmd{
-		Path:   pluginPath,
-		Args:   []string{pluginPath},
-		Env:    envVars(vars),
-		Stdin:  stdin,
-		Stdout: stdout,
-		Stderr: os.Stderr,
-	}
-
-	if err := cmd.Run(); err != nil {
-		return nil, pluginErr(err, stdout.Bytes())
-	}
-
-	res := &plugin.Result{}
-	err := json.Unmarshal(stdout.Bytes(), res)
-	return res, err
-}
-
-// taken from cni/pkg/plugin/ipam.go
-func pluginErr(err error, output []byte) error {
-	if _, ok := err.(*exec.ExitError); ok {
-		emsg := plugin.Error{}
-		if perr := json.Unmarshal(output, &emsg); perr != nil {
-			return fmt.Errorf("netplugin failed but error parsing its diagnostic message %q: %v", string(output), perr)
-		}
-		details := ""
-		if emsg.Details != "" {
-			details = fmt.Sprintf("; %v", emsg.Details)
-		}
-		return fmt.Errorf("%v%v", emsg.Msg, details)
-	}
-
-	return err
+	return invoke.ExecPlugin(pluginPath, conf.Bytes, envVars(vars))
 }
 
 // taken from rkt/networking/net_plugin.go
