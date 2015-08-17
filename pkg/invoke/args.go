@@ -24,21 +24,27 @@ func ArgsFromEnv() CNIArgs {
 }
 
 type Args struct {
-	Command     string
-	ContainerID string
-	NetNS       string
-	PluginArgs  [][2]string
-	IfName      string
-	Path        string
+	Command       string
+	ContainerID   string
+	NetNS         string
+	PluginArgs    [][2]string
+	PluginArgsStr string
+	IfName        string
+	Path          string
 }
 
 func (args *Args) AsEnv() []string {
 	env := os.Environ()
+	pluginArgsStr := args.PluginArgsStr
+	if pluginArgsStr == "" {
+		pluginArgsStr = stringify(args.PluginArgs)
+	}
+
 	env = append(env,
 		"CNI_COMMAND="+args.Command,
 		"CNI_CONTAINERID="+args.ContainerID,
 		"CNI_NETNS="+args.NetNS,
-		"CNI_ARGS="+stringify(args.PluginArgs),
+		"CNI_ARGS="+pluginArgsStr,
 		"CNI_IFNAME="+args.IfName,
 		"CNI_PATH="+args.Path)
 	return env
